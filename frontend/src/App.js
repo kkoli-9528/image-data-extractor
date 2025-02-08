@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import Tesseract from 'tesseract.js'; // Install: npm install tesseract.js
 import * as XLSX from 'xlsx';       // Install: npm install xlsx
+import axios from 'axios';          // Install: npm install axios
 
 function App() {
   const [images, setImages] = useState([]);
@@ -8,96 +8,46 @@ function App() {
   const [loading, setLoading] = useState(false);
 
   const handleImageChange = (event) => {
-    setImages(Array.from(event.target.files)); // Convert FileList to Array
+    setImages(Array.from(event.target.files));
   };
 
   const extractDataFromImage = async (imageFile) => {
     setLoading(true);
     try {
-      // 1. Load image onto Canvas for pre-processing
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const img = new Image();
+      const formData = new FormData();
+      formData.append('image', imageFile);
 
-      img.src = URL.createObjectURL(imageFile); // Set image source from File object
-
-      await new Promise((resolve) => { // Wait for image to load
-        img.onload = () => {
-          canvas.width = img.width;
-          canvas.height = img.height;
-          ctx.drawImage(img, 0, 0);
-          resolve();
-        };
+      const response = await axios.post('http://localhost:5000/ocr_doctr', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       });
 
-      // 2. Pre-processing steps on the canvas
+      const ocrText = response.data.text;
+      console.log("OCR Text from Doctr Backend:", ocrText);
 
-      // a) Grayscale Conversion
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imageData.data;
-      for (let i = 0; i < data.length; i += 4) {
-        const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-        data[i] = avg;       // red
-        data[i + 1] = avg;   // green
-        data[i + 2] = avg;   // blue
+      let extractedAmount = 'N/A';
+      const lines = ocrText.split('\n'); // Split OCR text into lines
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim(); // Trim whitespace from line
+        if (line.toLowerCase().includes('pay again') || line.toLowerCase().includes('completed')) {
+          if (i > 0) { // Check if there's a line before
+            const previousLine = lines[i - 1].trim();
+            if (/^[\d\.\s]+$/.test(previousLine)) { // Regex to check if line is mostly digits and dots and spaces
+              extractedAmount = previousLine.trim(); // Take the previous line as amount
+              break; // Stop after finding the first amount
+            }
+          }
+        }
       }
-      ctx.putImageData(imageData, 0, 0);
-
-      // b) Contrast Enhancement (Simple Stretching - you can explore Histogram Equalization if needed)
-      //    For simplicity, let's try a simple contrast stretch.  Adjust these values as needed.
-      const contrastFactor = 1.0; // Experiment with values > 1 to increase contrast
-      const brightnessOffset = 0; // Experiment with brightness offset
-
-      const contrastImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const contrastData = contrastImageData.data;
-      for (let i = 0; i < contrastData.length; i += 4) {
-        contrastData[i] = Math.max(0, Math.min(255, contrastFactor * (contrastData[i] + brightnessOffset)));     // red
-        contrastData[i + 1] = Math.max(0, Math.min(255, contrastFactor * (contrastData[i + 1] + brightnessOffset))); // green
-        contrastData[i + 2] = Math.max(0, Math.min(255, contrastFactor * (contrastData[i + 2] + brightnessOffset))); // blue
-      }
-      ctx.putImageData(contrastImageData, 0, 0);
 
 
-      // c) Thresholding (Simple Threshold - you can try Adaptive Thresholding if needed)
-      const thresholdValue = 255; // Experiment with threshold values (0-255)
-      const thresholdImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const thresholdData = thresholdImageData.data;
-      for (let i = 0; i < thresholdData.length; i += 4) {
-        const avg = (thresholdData[i] + thresholdData[i + 1] + thresholdData[i + 2]) / 3; // Grayscale again if not already grayscale
-        const binaryValue = avg > thresholdValue ? 255 : 0; // White or Black
-        thresholdData[i] = binaryValue;     // red
-        thresholdData[i + 1] = binaryValue; // green
-        thresholdData[i + 2] = binaryValue; // blue
-      }
-      ctx.putImageData(thresholdImageData, 0, 0);
-
-
-      // d) Rescaling (Upscaling) - Try this cautiously.  Too much upscaling can blur.
-      const scaleFactor = 1.0; // Experiment with scale factors > 1
-      const scaledCanvas = document.createElement('canvas');
-      scaledCanvas.width = canvas.width * scaleFactor;
-      scaledCanvas.height = canvas.height * scaleFactor;
-      const scaledCtx = scaledCanvas.getContext('2d');
-      scaledCtx.drawImage(canvas, 0, 0, scaledCanvas.width, scaledCanvas.height);
-
-
-      // 3. Get processed image data (using scaled canvas for OCR)
-      const processedImageDataURL = scaledCanvas.toDataURL('image/png'); // Get data URL of processed image
-      // Or you can try canvas itself: const processedImage = scaledCanvas;
-
-      console.log("OCR Text Output (Pre-processed Image):"); // Log for pre-processed image OCR
-      const { data: { text } } = await Tesseract.recognize(
-        processedImageDataURL, // Use processed image data for OCR
-        'eng',
-      );
-      console.log(text); // Log OCR output after pre-processing
-
-      const amountMatch = text.match(/₹\s*(\d+)/); // Try amount extraction again with pre-processed image
-      const upiIdMatch = text.match(/UPI transaction ID\s*(\d+)/);
-      const dateTimeMatch = text.match(/(\d{1,2} [A-Za-z]{3} \d{4}, \d{1,2}:\d{2} (am|pm))/);
+      const upiIdMatch = ocrText.match(/UPI transaction ID\s*(\d+)/);
+      const dateTimeMatch = ocrText.match(/(\d{1,2} [A-Za-z]{3} \d{4}, \d{1,2}:\d{2} (am|pm))/);
 
       const extracted = {
-        amount: amountMatch ? amountMatch[1] : 'N/A', // Now try to extract amount
+        amount: extractedAmount, // Use the extracted amount from line-by-line logic
         upiTransactionId: upiIdMatch ? upiIdMatch[1] : 'N/A',
         dateTime: dateTimeMatch ? dateTimeMatch[1] : 'N/A',
       };
@@ -112,7 +62,7 @@ function App() {
   };
 
   const handleExtractAllData = async () => {
-    setExtractedData([]); // Clear previous data
+    setExtractedData([]);
     const allExtracted = [];
     for (const image of images) {
       const data = await extractDataFromImage(image);
@@ -130,7 +80,7 @@ function App() {
     const worksheet = XLSX.utils.json_to_sheet(extractedData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Transaction Data');
-    XLSX.writeFile(workbook, 'transaction_data.xlsx'); // Triggers download
+    XLSX.writeFile(workbook, 'transaction_data.xlsx');
   };
 
 
@@ -139,7 +89,7 @@ function App() {
       <h1>Image Data Extractor</h1>
       <input type="file" multiple accept="image/*" onChange={handleImageChange} />
       <button onClick={handleExtractAllData} disabled={images.length === 0 || loading}>
-        {loading ? "Extracting..." : "Extract Data from Images"}
+        {loading ? "Extracting..." : "Extract Data from Images (Doctr Backend)"}
       </button>
       <button onClick={handleDownloadExcel} disabled={extractedData.length === 0}>
         Download as Excel
