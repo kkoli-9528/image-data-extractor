@@ -1,0 +1,23 @@
+Before Installing PyTorch, TorchVision, and TorchAudio from the PyTorch CUDA 12.6 index:
+
+ Install Flask and python-doctr from PyPI:
+
+**
+ pip install flask python-doctr
+**
+
+Only use the below command if you have GPU with CUDA-Enabled, and check the official doc of the nvidia about CUDA for more info (https://docs.nvidia.com/cuda/cuda-installation-guide-microsoft-windows/index.html)
+
+**
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+**
+
+OR
+
+use the below command if you don't have GPU with CUDA-Enabled and want's to use CPU:
+
+**
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+**
+
+Note: I have not used the command for CPU, I don't know the results. Cheers mate!!!
