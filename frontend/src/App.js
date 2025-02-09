@@ -27,27 +27,38 @@ function App() {
       console.log("OCR Text from Doctr Backend:", ocrText);
 
       let extractedAmount = 'N/A';
-      const lines = ocrText.split('\n'); // Split OCR text into lines
+      const lines = ocrText.split('\n');
 
       for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim(); // Trim whitespace from line
+        const line = lines[i].trim();
         if (line.toLowerCase().includes('pay again') || line.toLowerCase().includes('completed')) {
-          if (i > 0) { // Check if there's a line before
+          if (i > 0) {
             const previousLine = lines[i - 1].trim();
-            if (/^[\d\.\s]+$/.test(previousLine)) { // Regex to check if line is mostly digits and dots and spaces
-              extractedAmount = previousLine.trim(); // Take the previous line as amount
-              break; // Stop after finding the first amount
+            const amountMatchLine = previousLine.match(/^[^.\d]*([\d\.]+)\s*$/); // Relaxed amount regex for line
+            if (amountMatchLine && amountMatchLine[1]) {
+              extractedAmount = amountMatchLine[1];
+              break;
             }
           }
         }
       }
 
+      // Fallback amount extraction (if line-by-line fails - try regex on whole text)
+      if (extractedAmount === 'N/A') {
+        const fallbackAmountMatch = ocrText.match(/(Pay again|Completed)\s*([\d\.]+)/i); // Original regex as fallback
+        if (fallbackAmountMatch && fallbackAmountMatch[2]) {
+          extractedAmount = fallbackAmountMatch[2];
+        }
+      }
 
+
+      // Improved Date Regex (more flexible with day and month formats)
+      const dateTimeMatch = ocrText.match(/(\d{1,2}\s*[A-Za-z]{3,9}\s*\d{4},\s*\d{1,2}:\d{2}\s*(am|pm))/i); // More flexible date regex
       const upiIdMatch = ocrText.match(/UPI transaction ID\s*(\d+)/);
-      const dateTimeMatch = ocrText.match(/(\d{1,2} [A-Za-z]{3} \d{4}, \d{1,2}:\d{2} (am|pm))/);
+
 
       const extracted = {
-        amount: extractedAmount, // Use the extracted amount from line-by-line logic
+        amount: extractedAmount,
         upiTransactionId: upiIdMatch ? upiIdMatch[1] : 'N/A',
         dateTime: dateTimeMatch ? dateTimeMatch[1] : 'N/A',
       };
@@ -103,6 +114,7 @@ function App() {
           <table>
             <thead>
               <tr>
+                <th>Index</th>
                 <th>Amount</th>
                 <th>UPI Transaction ID</th>
                 <th>Date & Time</th>
@@ -111,6 +123,7 @@ function App() {
             <tbody>
               {extractedData.map((data, index) => (
                 <tr key={index}>
+                  <td>{index}</td>
                   <td>{data.amount}</td>
                   <td>{data.upiTransactionId}</td>
                   <td>{data.dateTime}</td>
